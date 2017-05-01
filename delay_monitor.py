@@ -20,7 +20,7 @@ from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet, ipv4, arp, ipv6, icmp
 from ryu.lib.packet import ether_types, in_proto
-from ryu.lib import mac
+from ryu.lib import mac, hub
 from ryu.topology.api import get_switch, get_link
 from ryu.app.wsgi import ControllerBase
 from ryu.topology import event, switches
