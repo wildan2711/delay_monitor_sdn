@@ -20,23 +20,12 @@ from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet, ipv4, arp, ipv6, icmp
 from ryu.lib.packet import ether_types, in_proto
-from ryu.lib import mac, hub, ip
+from ryu.lib import mac
 from ryu.topology.api import get_switch, get_link
 from ryu.app.wsgi import ControllerBase
 from ryu.topology import event, switches
-from collections import defaultdict
-from requests import get
-from subprocess import check_output
 from thread import start_new_thread
-from operator import itemgetter
-import logging
-import socket
 import time
-import os
-import shlex
-import json
-import re
-import random
 
 class ProjectController(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
@@ -46,12 +35,12 @@ class ProjectController(app_manager.RyuApp):
         self.mac_to_port = {}
         self.topology_api_app = self
         self.datapath_list = {} # maps dpid to switch object
-        self.arp_table = {} # maps ip to mac
-        self.controller_mac = 'dd:dd:dd:dd:dd:dd' # decoy mac
-        self.controller_ip = '10.0.0.100' # decoy ip
-        self.server_ips = ['10.0.0.1', '10.0.0.2']
-        self.server_switch = 1
-        self.latency = {}
+        self.arp_table = {} # maps IP to MAC
+        self.controller_mac = 'dd:dd:dd:dd:dd:dd' # decoy MAC
+        self.controller_ip = '10.0.0.100' # decoy IP
+        self.server_ips = ['10.0.0.1', '10.0.0.2'] # server IPs to monitor
+        self.server_switch = 1 # switch dpid with connections to the servers
+        self.latency = {} # maps IP to the latency value
         
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -85,7 +74,10 @@ class ProjectController(app_manager.RyuApp):
             mod = parser.OFPFlowMod(datapath=datapath, priority=priority,
                                     match=match, instructions=inst)
         datapath.send_msg(mod)
-
+    
+    """
+        Monitors server latency periodically for 1 second
+    """
     def monitor_server_latency(self):
         switch = self.datapath_list[self.server_switch]
         while True:
@@ -133,7 +125,10 @@ class ProjectController(app_manager.RyuApp):
         latency = (time.time() - float(info[2])) * 1000 # in ms
         print "ip %s connected to s%s latency = %f ms" % (ip, switch, latency)
         self.latency[ip] = latency
-
+    
+    """
+        Initializes ARP entries for the controller decoy addresses
+    """
     def request_arp(self, datapath, ip):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
@@ -160,7 +155,11 @@ class ProjectController(app_manager.RyuApp):
             actions=actions, data=ARP_Request.data)
         datapath.send_msg(out)
     
-    
+    """
+        This is needed to resolve the decoy controller ARP entries
+        for ARP poisoning prevention systems, by replying ARP 
+        requests sent to the controller.
+    """
     def reply_arp(self, datapath, eth_dst, ip_dst, in_port):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
